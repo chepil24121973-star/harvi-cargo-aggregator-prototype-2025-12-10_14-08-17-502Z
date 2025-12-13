@@ -14,6 +14,7 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
     {
       id: '1',
       productDescription: '',
+      tnvedCode: '',
       weight: '',
       volume: '',
     },
@@ -33,6 +34,7 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
       {
         id: Date.now().toString(),
         productDescription: '',
+        tnvedCode: '',
         weight: '',
         volume: '',
       },
@@ -110,6 +112,24 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
                       onChange={(e) => handleProductChange(product.id, 'productDescription', e.target.value)}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="Например: детские игрушки, текстиль, электроника"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Код ТНВЭД
+                    </label>
+                    <input
+                      type="text"
+                      value={product.tnvedCode}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        handleProductChange(product.id, 'tnvedCode', value);
+                      }}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="0000000000"
+                      maxLength={10}
                       required
                     />
                   </div>
