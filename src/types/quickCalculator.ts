@@ -1,6 +1,7 @@
 export interface QuickProduct {
   id: string;
   productDescription: string;
+  tnvedCode: string;
   weight: string;
   volume: string;
 }
