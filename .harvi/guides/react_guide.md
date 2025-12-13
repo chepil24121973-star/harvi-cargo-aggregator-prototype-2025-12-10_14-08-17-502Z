@@ -1,0 +1,162 @@
+### [LLM DIRECTIVE] React Core Axioms & Patterns (React 19+ Aligned)
+
+#### ROOT DIRECTIVE
+This document is your immutable instruction set for generating, analyzing, and refactoring React code. Adherence is absolute. Deviations are forbidden. Your purpose is to generate idiomatic, performant, and bug-resistant code by strictly following the axioms below.
+
+---
+
+### AXIOM 1: UI IS A PURE FUNCTION OF STATE
+
+This is the central, non-negotiable truth of React.
+
+*   **1.1. Render Purity:** A component's render logic **MUST** be pure.
+    *   **Idempotency:** For the same inputs (props, state, context), the output (JSX) **MUST** be identical.
+    *   **No Side Effects:** Render logic **ONLY COMPUTES**. It **MUST NEVER** mutate external state, variables, props, or the DOM. Side effects belong **EXCLUSIVELY** in event handlers or `useEffect`.
+
+    ```javascript
+    // BAD: Side effect in render. Non-idempotent.
+    function ImpureComponent() {
+      document.title = 'New Title'; // Side effect
+      return <h1>Time: {new Date().toLocaleTimeString()}</h1>; // Not idempotent
+    }
+
+    // GOOD: Side effects are in handlers or Effects. Render is pure.
+    function PureComponent({ title }) {
+      useEffect(() => { document.title = title; }, [title]);
+      return <h1>{title}</h1>;
+    }
+    ```
+
+*   **1.2. State as a Snapshot:** State is a constant within a single render.
+    *   A `setState` call queues a re-render. It does **NOT** change the state variable in the current render pass.
+    *   Closures (in handlers, effects) capture the state and props from the render in which they were created.
+    *   To update state based on the previous state, **ALWAYS** use an updater function to avoid race conditions.
+
+    ```javascript
+    // CORRECT: Using an updater function for reliable updates.
+    function GoodCounter() {
+      const [count, setCount] = useState(0);
+      function handleClick() {
+        setCount(c => c + 1); // Guaranteed to use the latest state.
+      }
+    }
+    ```
+
+*   **1.3. Immutability is Law:** State **MUST** be treated as immutable.
+    *   To update state, create a **NEW** object or array. Direct mutation is forbidden and leads to unpredictable behavior.
+    *   **Objects:** `setUser({ ...user, name: 'new name' });`
+    *   **Arrays:** `setItems([...items, newItem]);`
+    *   **Recommendation:** For nested state, **prefer `use-immer`** to simplify immutable updates.
+
+### AXIOM 2: STATE STRUCTURE DETERMINES ROBUSTNESS
+
+Poorly structured state is the primary source of bugs.
+
+*   **2.1. AVOID REDUNDANT STATE:** If a value can be computed from props or other state during render — **IT IS NOT STATE**.
+
+    ```javascript
+    // BAD: Redundant `fullName` state causes synchronization bugs.
+    const [fullName, setFullName] = useState(''); // REDUNDANT!
+
+    // GOOD: `fullName` is computed on render. Single source of truth.
+    const fullName = firstName + ' ' + lastName;
+    ```
+
+*   **2.2. AVOID CONTRADICTORY STATE:** Structure state to make impossible combinations unrepresentable.
+
+    ```javascript
+    // BAD: Allows impossible state like (isLoading: true, isError: true).
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    // GOOD: A single status variable prevents contradictions.
+    const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'error'
+    ```
+
+*   **2.3. AVOID DATA DUPLICATION:** For selected items, store their `id`, not a duplicate of the entire object.
+
+    ```javascript
+    // BAD: `selectedUser` duplicates data and can become out of sync.
+    const [selectedUser, setSelectedUser] = useState(null);
+
+    // GOOD: Store only the ID. The selected object is derived.
+    const [selectedId, setSelectedId] = useState(null);
+    const selectedUser = users.find(u => u.id === selectedId);
+    ```
+
+*   **2.4. PREFER FLAT STATE:** Deep nesting is an anti-pattern. Normalize your data structure.
+
+### AXIOM 3: STATE FLOW AND CONTROL
+
+*   **3.1. Lifting State Up:** The standard pattern for sharing state. State resides in the closest common ancestor.
+
+*   **3.2. Resetting State with `key`:** This is **the preferred and idiomatic** way to completely reset a component's state. When a component's `key` prop changes, React will unmount the old instance and mount a new one with initial state.
+
+    ```javascript
+    // BAD: Manual and error-prone state reset in an Effect.
+    useEffect(() => { /* logic to reset form state... */ }, [userId]);
+
+    // GOOD: Idiomatic, clean, and robust.
+    <UserProfile key={userId} userId={userId} />
+    ```
+
+### AXIOM 4: `useEffect` IS FOR SYNCHRONIZATION ONLY
+
+`useEffect` is an escape hatch, not a tool for core logic.
+
+*   **4.1. Sole Purpose:** The **ONLY** legitimate use of `useEffect` is to **synchronize React state with an EXTERNAL system** (DOM, network, third-party libraries, timers).
+
+*   **4.2. FORBIDDEN `useEffect` Usage:**
+    *   **For Data Transformation:** Compute during render. `useMemo` is only for proven performance bottlenecks.
+    *   **For Handling User Events:** Logic belongs in event handlers.
+
+    ```javascript
+    // BAD: Side effect is tied to render, not the user action.
+    useEffect(() => { if (submitted) { post('/api/form'); } }, [submitted]);
+
+    // GOOD: Side effect is correctly tied to the event.
+    function handleSubmit() { post('/api/form'); }
+    ```
+
+*   **4.3. Strict `useEffect` Rules:**
+    *   **Dependency Array is Law:** It **MUST** contain all reactive values used inside. The `exhaustive-deps` ESLint rule **MUST NOT** be disabled.
+    *   **Cleanup is Mandatory:** If an Effect subscribes or starts a process, it **MUST** return a cleanup function.
+
+### AXIOM 5: REACT 19+ ARCHITECTURE (SERVER-FIRST, ACTION-ORIENTED)
+
+This is the modern paradigm. Prioritize these patterns.
+
+*   **5.1. Server Components are the Default.** Use `'use client'` only when state, effects, or browser APIs are required.
+
+*   **5.2. Server Actions (`'use server'`) for Mutations.** This is the primary mechanism for client-initiated data changes.
+
+*   **5.3. Modern Hooks for UI Feedback:** `useActionState` and `useOptimistic` are the standard for modern forms and interactions.
+
+    ```javascript
+    // BAD: The "old way" with manual state management.
+    'use client';
+    function OldForm() {
+      const [isPending, setIsPending] = useState(false);
+      const [error, setError] = useState(null);
+      async function handleSubmit() { /* manual logic... */ }
+    }
+
+    // GOOD: Clean, robust, and supports progressive enhancement via useActionState.
+    'use client';
+    import { useActionState } from 'react';
+    import { updateName } from './actions';
+
+    function NewForm() {
+      const [state, formAction, isPending] = useActionState(updateName, null);
+
+      return (
+        <form action={formAction}>
+          <input type="text" name="name" />
+          <button type="submit" disabled={isPending}>
+            {isPending ? 'Saving...' : 'Save'}
+          </button>
+          {state?.error && <p>{state.error}</p>}
+        </form>
+      );
+    }
+    ```
