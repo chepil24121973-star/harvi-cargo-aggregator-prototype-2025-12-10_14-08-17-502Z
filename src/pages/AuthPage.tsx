@@ -11,7 +11,21 @@ export const AuthPage: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     login(email);
-    navigate('/dashboard');
+    
+    // Проверяем, есть ли сохраненные данные из QuickCalculator
+    const pendingData = localStorage.getItem('pendingQuickCalcData');
+    if (pendingData) {
+      // Очищаем сохраненные данные
+      localStorage.removeItem('pendingQuickCalcData');
+      // Перенаправляем на форму заявки с данными
+      navigate('/application/new', {
+        state: {
+          fromQuickCalc: JSON.parse(pendingData)
+        }
+      });
+    } else {
+      navigate('/dashboard');
+    }
   };
 
   return (

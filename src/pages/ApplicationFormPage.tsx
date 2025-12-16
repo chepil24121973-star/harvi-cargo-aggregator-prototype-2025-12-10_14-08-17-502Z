@@ -10,7 +10,19 @@ export const ApplicationFormPage: React.FC = () => {
   const location = useLocation();
   const { addApplication, user } = useApp();
   
-  const quickCalcData = location.state?.fromQuickCalc;
+  // Получаем данные из state или из localStorage
+  let quickCalcData = location.state?.fromQuickCalc;
+  if (!quickCalcData) {
+    const savedData = localStorage.getItem('pendingQuickCalcData');
+    if (savedData) {
+      try {
+        quickCalcData = JSON.parse(savedData);
+        localStorage.removeItem('pendingQuickCalcData');
+      } catch (e) {
+        console.error('Failed to parse saved quick calc data', e);
+      }
+    }
+  }
   
   // Инициализация товаров из данных быстрого калькулятора
   const initialProducts = quickCalcData?.products && quickCalcData.products.length > 0

@@ -112,31 +112,48 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
 
   const handleSelectTNVED = (productId: string, code: TNVEDCode) => {
     const normalizedCode = normalizeTNVEDCode(code.code);
-    handleProductChange(productId, 'tnvedCode', normalizedCode);
+    // Сначала закрываем список
     setShowSuggestions(prev => ({ ...prev, [productId]: false }));
+    // Затем обновляем данные
+    handleProductChange(productId, 'tnvedCode', normalizedCode);
     setTnvedInfo(prev => ({ ...prev, [productId]: code }));
   };
 
   const handleSelectTNVEDFromDescription = (productId: string, code: TNVEDCode) => {
     const normalizedCode = normalizeTNVEDCode(code.code);
-    handleProductChange(productId, 'tnvedCode', normalizedCode);
+    // Сначала закрываем список
     setShowDescriptionSuggestions(prev => ({ ...prev, [productId]: false }));
+    // Затем обновляем данные
+    handleProductChange(productId, 'tnvedCode', normalizedCode);
     setTnvedInfo(prev => ({ ...prev, [productId]: code }));
   };
 
   // Закрытие выпадающего списка при клике вне его
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Проверяем все списки предложений по коду ТНВЭД
       Object.keys(suggestionRefs.current).forEach(productId => {
         const ref = suggestionRefs.current[productId];
-        if (ref && !ref.contains(event.target as Node)) {
-          setShowSuggestions(prev => ({ ...prev, [productId]: false }));
+        if (ref && !ref.contains(target)) {
+          // Проверяем, что клик не был на самом поле ввода или его родителях
+          const inputElement = document.querySelector(`input[data-product-id="${productId}"][data-field="tnvedCode"]`) as HTMLElement;
+          if (!inputElement || (!inputElement.contains(target) && !target.closest(`input[data-product-id="${productId}"][data-field="tnvedCode"]`))) {
+            setShowSuggestions(prev => ({ ...prev, [productId]: false }));
+          }
         }
       });
+      
+      // Проверяем все списки предложений по описанию
       Object.keys(descriptionSuggestionRefs.current).forEach(productId => {
         const ref = descriptionSuggestionRefs.current[productId];
-        if (ref && !ref.contains(event.target as Node)) {
-          setShowDescriptionSuggestions(prev => ({ ...prev, [productId]: false }));
+        if (ref && !ref.contains(target)) {
+          // Проверяем, что клик не был на самом поле ввода или его родителях
+          const inputElement = document.querySelector(`input[data-product-id="${productId}"][data-field="productDescription"]`) as HTMLElement;
+          if (!inputElement || (!inputElement.contains(target) && !target.closest(`input[data-product-id="${productId}"][data-field="productDescription"]`))) {
+            setShowDescriptionSuggestions(prev => ({ ...prev, [productId]: false }));
+          }
         }
       });
     };
@@ -218,6 +235,19 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
                           setShowDescriptionSuggestions(prev => ({ ...prev, [product.id]: true }));
                         }
                       }}
+                      onBlur={(e) => {
+                        // Закрываем список при потере фокуса
+                        // Используем небольшую задержку, чтобы клик на элемент списка успел обработаться
+                        setTimeout(() => {
+                          const activeElement = document.activeElement;
+                          const suggestionRef = descriptionSuggestionRefs.current[product.id];
+                          if (!suggestionRef || !suggestionRef.contains(activeElement)) {
+                            setShowDescriptionSuggestions(prev => ({ ...prev, [product.id]: false }));
+                          }
+                        }, 150);
+                      }}
+                      data-product-id={product.id}
+                      data-field="productDescription"
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="Например: детские игрушки, текстиль, электроника"
                       required
@@ -233,8 +263,19 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
                           <button
                             key={idx}
                             type="button"
-                            onClick={() => handleSelectTNVEDFromDescription(product.id, suggestion)}
-                            className="w-full text-left px-4 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                            onMouseDown={(e) => {
+                              // Предотвращаем потерю фокуса при клике
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              // Закрываем список сразу
+                              setShowDescriptionSuggestions(prev => ({ ...prev, [product.id]: false }));
+                              handleSelectTNVEDFromDescription(product.id, suggestion);
+                            }}
+                            className="w-full text-left px-4 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 cursor-pointer"
                           >
                             <div className="font-medium text-gray-900">{normalizeTNVEDCode(suggestion.code)}</div>
                             <div className="text-sm text-gray-600 truncate">{suggestion.description}</div>
@@ -261,6 +302,18 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
                           setShowSuggestions(prev => ({ ...prev, [product.id]: true }));
                         }
                       }}
+                      onBlur={() => {
+                        // Закрываем список при потере фокуса
+                        setTimeout(() => {
+                          const activeElement = document.activeElement;
+                          const suggestionRef = suggestionRefs.current[product.id];
+                          if (!suggestionRef || !suggestionRef.contains(activeElement)) {
+                            setShowSuggestions(prev => ({ ...prev, [product.id]: false }));
+                          }
+                        }, 150);
+                      }}
+                      data-product-id={product.id}
+                      data-field="tnvedCode"
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="0000000000"
                       maxLength={10}
@@ -277,8 +330,18 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
                           <button
                             key={idx}
                             type="button"
-                            onClick={() => handleSelectTNVED(product.id, suggestion)}
-                            className="w-full text-left px-4 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              // Закрываем список сразу
+                              setShowSuggestions(prev => ({ ...prev, [product.id]: false }));
+                              handleSelectTNVED(product.id, suggestion);
+                            }}
+                            className="w-full text-left px-4 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0 cursor-pointer"
                           >
                             <div className="font-medium text-gray-900">{normalizeTNVEDCode(suggestion.code)}</div>
                             <div className="text-sm text-gray-600 truncate">{suggestion.description}</div>
@@ -426,7 +489,25 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
                   Авторизуйтесь, чтобы увидеть детали расчёта и отправить запрос логистическим компаниям
                 </p>
                 <button
-                  onClick={() => navigate('/auth')}
+                  onClick={() => {
+                    // Сохраняем данные формы перед переходом на авторизацию
+                    const totalWeight = products.reduce((sum, p) => sum + (parseFloat(p.weight) || 0), 0);
+                    const totalVolume = products.reduce((sum, p) => sum + (parseFloat(p.volume) || 0), 0);
+                    const quickCalcData = {
+                      ...formData,
+                      productDescription: products[0].productDescription,
+                      weight: totalWeight.toString(),
+                      volume: totalVolume.toString(),
+                      products: products.map(p => ({
+                        productDescription: p.productDescription,
+                        tnvedCode: p.tnvedCode,
+                        weight: p.weight,
+                        volume: p.volume,
+                      })),
+                    };
+                    localStorage.setItem('pendingQuickCalcData', JSON.stringify(quickCalcData));
+                    navigate('/auth');
+                  }}
                   className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
                 >
                   Войти / Зарегистрироваться
