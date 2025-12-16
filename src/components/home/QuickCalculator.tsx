@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calculator, Plus, Trash2 } from 'lucide-react';
 import { QuickProduct, QuickCalcFormData } from '../../types/quickCalculator';
-import { searchTNVED, findTNVEDByCode, normalizeTNVEDCode, type TNVEDCode } from '../../utils/tnvedService';
+import { searchTNVED, searchTNVEDByText, findTNVEDByCode, normalizeTNVEDCode, type TNVEDCode } from '../../utils/tnvedService';
 
 interface QuickCalculatorProps {
   isAuthenticated: boolean;
@@ -31,7 +31,11 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
   const [tnvedSuggestions, setTnvedSuggestions] = useState<{ [productId: string]: TNVEDCode[] }>({});
   const [tnvedInfo, setTnvedInfo] = useState<{ [productId: string]: TNVEDCode | null }>({});
   const [showSuggestions, setShowSuggestions] = useState<{ [productId: string]: boolean }>({});
+  const [descriptionSuggestions, setDescriptionSuggestions] = useState<{ [productId: string]: TNVEDCode[] }>({});
+  const [showDescriptionSuggestions, setShowDescriptionSuggestions] = useState<{ [productId: string]: boolean }>({});
   const suggestionRefs = useRef<{ [productId: string]: HTMLDivElement | null }>({});
+  const descriptionSuggestionRefs = useRef<{ [productId: string]: HTMLDivElement | null }>({});
+  const descriptionSearchTimeouts = useRef<{ [productId: string]: NodeJS.Timeout | null }>({});
 
   const handleAddProduct = () => {
     setProducts([
@@ -81,12 +85,42 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
         setTnvedInfo(prev => ({ ...prev, [id]: null }));
       }
     }
+
+    // Поиск ТНВЭД при изменении описания товара
+    if (field === 'productDescription') {
+      const trimmedValue = value.trim();
+      
+      // Очищаем предыдущий таймаут
+      if (descriptionSearchTimeouts.current[id]) {
+        clearTimeout(descriptionSearchTimeouts.current[id]);
+      }
+
+      if (trimmedValue.length >= 2) {
+        // Debounce поиска - ждем 500ms после последнего ввода
+        descriptionSearchTimeouts.current[id] = setTimeout(() => {
+          searchTNVEDByText(trimmedValue, 5).then(suggestions => {
+            setDescriptionSuggestions(prev => ({ ...prev, [id]: suggestions }));
+            setShowDescriptionSuggestions(prev => ({ ...prev, [id]: true }));
+          });
+        }, 500);
+      } else {
+        setDescriptionSuggestions(prev => ({ ...prev, [id]: [] }));
+        setShowDescriptionSuggestions(prev => ({ ...prev, [id]: false }));
+      }
+    }
   };
 
   const handleSelectTNVED = (productId: string, code: TNVEDCode) => {
     const normalizedCode = normalizeTNVEDCode(code.code);
     handleProductChange(productId, 'tnvedCode', normalizedCode);
     setShowSuggestions(prev => ({ ...prev, [productId]: false }));
+    setTnvedInfo(prev => ({ ...prev, [productId]: code }));
+  };
+
+  const handleSelectTNVEDFromDescription = (productId: string, code: TNVEDCode) => {
+    const normalizedCode = normalizeTNVEDCode(code.code);
+    handleProductChange(productId, 'tnvedCode', normalizedCode);
+    setShowDescriptionSuggestions(prev => ({ ...prev, [productId]: false }));
     setTnvedInfo(prev => ({ ...prev, [productId]: code }));
   };
 
@@ -99,10 +133,22 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
           setShowSuggestions(prev => ({ ...prev, [productId]: false }));
         }
       });
+      Object.keys(descriptionSuggestionRefs.current).forEach(productId => {
+        const ref = descriptionSuggestionRefs.current[productId];
+        if (ref && !ref.contains(event.target as Node)) {
+          setShowDescriptionSuggestions(prev => ({ ...prev, [productId]: false }));
+        }
+      });
     };
 
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      // Очищаем таймауты при размонтировании
+      Object.values(descriptionSearchTimeouts.current).forEach(timeout => {
+        if (timeout) clearTimeout(timeout);
+      });
+    };
   }, []);
 
   const handleCalculate = (e: React.FormEvent) => {
@@ -118,7 +164,12 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
             productDescription: products[0].productDescription,
             weight: totalWeight.toString(),
             volume: totalVolume.toString(),
-            products: products,
+            products: products.map(p => ({
+              productDescription: p.productDescription,
+              tnvedCode: p.tnvedCode,
+              weight: p.weight,
+              volume: p.volume,
+            })),
           }
         } 
       });
@@ -154,7 +205,7 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
                 </div>
                 
                 <div className="space-y-3">
-                  <div>
+                  <div className="relative">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Краткое описание товара
                     </label>
@@ -162,10 +213,36 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
                       type="text"
                       value={product.productDescription}
                       onChange={(e) => handleProductChange(product.id, 'productDescription', e.target.value)}
+                      onFocus={() => {
+                        if (product.productDescription.trim().length >= 2 && descriptionSuggestions[product.id]?.length > 0) {
+                          setShowDescriptionSuggestions(prev => ({ ...prev, [product.id]: true }));
+                        }
+                      }}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="Например: детские игрушки, текстиль, электроника"
                       required
                     />
+                    
+                    {/* Выпадающий список с предложениями ТНВЭД по описанию */}
+                    {showDescriptionSuggestions[product.id] && descriptionSuggestions[product.id]?.length > 0 && (
+                      <div
+                        ref={el => descriptionSuggestionRefs.current[product.id] = el}
+                        className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                      >
+                        {descriptionSuggestions[product.id].map((suggestion, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => handleSelectTNVEDFromDescription(product.id, suggestion)}
+                            className="w-full text-left px-4 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="font-medium text-gray-900">{normalizeTNVEDCode(suggestion.code)}</div>
+                            <div className="text-sm text-gray-600 truncate">{suggestion.description}</div>
+                            <div className="text-xs text-gray-500">Пошлина: {suggestion.dutyRate}%</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="relative">

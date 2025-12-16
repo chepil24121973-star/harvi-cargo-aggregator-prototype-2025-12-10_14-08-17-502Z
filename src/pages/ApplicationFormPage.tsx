@@ -12,22 +12,31 @@ export const ApplicationFormPage: React.FC = () => {
   
   const quickCalcData = location.state?.fromQuickCalc;
   
-  const [products, setProducts] = useState<Partial<Product>[]>([
-    {
-      productName: quickCalcData?.productDescription || '',
-      productMaterial: '',
-      productDescription: quickCalcData?.productDescription || '',
-      tnvedCode: '',
-      quantity: 0,
-    },
-  ]);
+  // Инициализация товаров из данных быстрого калькулятора
+  const initialProducts = quickCalcData?.products && quickCalcData.products.length > 0
+    ? quickCalcData.products.map((p: any) => ({
+        productName: p.productDescription || '',
+        productMaterial: '',
+        productDescription: p.productDescription || '',
+        tnvedCode: p.tnvedCode || '',
+        quantity: 0,
+      }))
+    : [{
+        productName: quickCalcData?.productDescription || '',
+        productMaterial: '',
+        productDescription: quickCalcData?.productDescription || '',
+        tnvedCode: quickCalcData?.products?.[0]?.tnvedCode || '',
+        quantity: 0,
+      }];
+  
+  const [products, setProducts] = useState<Partial<Product>[]>(initialProducts);
 
   const [formData, setFormData] = useState({
     weight: quickCalcData?.weight || '',
     length: '',
     width: '',
     height: '',
-    volume: '',
+    volume: quickCalcData?.volume || '',
     productCost: quickCalcData?.productCost || '',
     incoterms: 'EXW',
     originCity: quickCalcData?.originCity || 'Гуанчжоу',
@@ -103,7 +112,7 @@ export const ApplicationFormPage: React.FC = () => {
         alert(`Товар ${i + 1}: Пожалуйста, укажите код ТН ВЭД или используйте AI-подбор`);
         return;
       }
-      if (!product.productName || !product.productMaterial || !product.productDescription) {
+      if (!product.productName || !product.productMaterial) {
         alert(`Товар ${i + 1}: Заполните все обязательные поля`);
         return;
       }
@@ -118,7 +127,7 @@ export const ApplicationFormPage: React.FC = () => {
         id: `${Date.now()}-${i}`,
         productName: p.productName!,
         productMaterial: p.productMaterial!,
-        productDescription: p.productDescription!,
+        productDescription: p.productDescription || p.productName || '',
         tnvedCode: p.tnvedCode!,
         quantity: p.quantity || 0,
       })),
@@ -203,20 +212,6 @@ export const ApplicationFormPage: React.FC = () => {
                         onChange={(e) => handleProductChange(index, 'productMaterial', e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="Например: пластик ABS, хлопок, нержавеющая сталь"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Описание
-                      </label>
-                      <textarea
-                        value={product.productDescription || ''}
-                        onChange={(e) => handleProductChange(index, 'productDescription', e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        rows={3}
-                        placeholder="Что это за товар, для чего используется"
                         required
                       />
                     </div>
