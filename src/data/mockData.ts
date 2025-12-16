@@ -1,4 +1,5 @@
 import { Application, LogisticsCompany, TNVEDSuggestion, CertificationRequirements } from '../types';
+import { searchTNVEDByText, findTNVEDByCode, normalizeTNVEDCode } from '../utils/tnvedService';
 
 export const mockApplications: Application[] = [
   {
@@ -96,90 +97,36 @@ export const mockLogisticsCompanies: LogisticsCompany[] = [
   },
 ];
 
-export const getTNVEDSuggestions = (
+export const getTNVEDSuggestions = async (
   productName: string,
   material: string,
   description: string
-): TNVEDSuggestion[] => {
-  const productLower = (productName + ' ' + description).toLowerCase();
+): Promise<TNVEDSuggestion[]> => {
+  const searchQuery = `${productName} ${material} ${description}`.trim();
   
-  if (productLower.includes('игрушк')) {
-    return [
-      {
-        code: '9503006100',
-        description: 'Игрушки, изображающие животных или других существ, кроме человека, укомплектованные',
-        confidence: 'high',
-      },
-      {
-        code: '9503005000',
-        description: 'Конструкторы и строительные наборы',
-        confidence: 'medium',
-      },
-      {
-        code: '9503008500',
-        description: 'Прочие игрушки и модели, с двигателем или без него',
-        confidence: 'medium',
-      },
-    ];
+  if (!searchQuery) {
+    return [];
   }
-  
-  if (productLower.includes('текстил') || productLower.includes('белье') || productLower.includes('полотенц')) {
+
+  try {
+    const results = await searchTNVEDByText(searchQuery, 10);
+    
+    return results.map(item => ({
+      code: normalizeTNVEDCode(item.code),
+      description: item.description,
+      confidence: 'high' as const,
+    }));
+  } catch (error) {
+    console.error('Ошибка при поиске ТНВЭД:', error);
+    // Fallback на старые данные при ошибке
     return [
       {
-        code: '6302310000',
-        description: 'Белье постельное из хлопчатобумажных тканей',
-        confidence: 'high',
-      },
-      {
-        code: '6302600000',
-        description: 'Белье столовое',
+        code: '9999999999',
+        description: 'Прочие товары народного потребления',
         confidence: 'low',
       },
-      {
-        code: '6302910000',
-        description: 'Белье туалетное и кухонное из хлопчатобумажных махровых тканей',
-        confidence: 'medium',
-      },
     ];
   }
-  
-  if (productLower.includes('одежд') || productLower.includes('футболк') || productLower.includes('майк')) {
-    return [
-      {
-        code: '6109100000',
-        description: 'Футболки, майки и аналогичные изделия трикотажные машинного или ручного вязания',
-        confidence: 'high',
-      },
-      {
-        code: '6110200000',
-        description: 'Свитера, пуловеры, кардиганы из хлопка',
-        confidence: 'medium',
-      },
-    ];
-  }
-  
-  if (productLower.includes('электрон') || productLower.includes('гаджет') || productLower.includes('наушник')) {
-    return [
-      {
-        code: '8518300000',
-        description: 'Наушники и вкладные телефоны, комбинированные с микрофоном или без него',
-        confidence: 'high',
-      },
-      {
-        code: '8517620000',
-        description: 'Аппаратура для приема, преобразования и передачи или регенерации голоса',
-        confidence: 'medium',
-      },
-    ];
-  }
-  
-  return [
-    {
-      code: '9999999999',
-      description: 'Прочие товары народного потребления',
-      confidence: 'low',
-    },
-  ];
 };
 
 export const getCertificationRequirements = (tnvedCode: string): CertificationRequirements => {

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calculator, Plus, Trash2 } from 'lucide-react';
 import { QuickProduct, QuickCalcFormData } from '../../types/quickCalculator';
+import { searchTNVED, findTNVEDByCode, normalizeTNVEDCode, type TNVEDCode } from '../../utils/tnvedService';
 
 interface QuickCalculatorProps {
   isAuthenticated: boolean;
@@ -27,6 +28,10 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
   });
   
   const [showBlurred, setShowBlurred] = useState(false);
+  const [tnvedSuggestions, setTnvedSuggestions] = useState<{ [productId: string]: TNVEDCode[] }>({});
+  const [tnvedInfo, setTnvedInfo] = useState<{ [productId: string]: TNVEDCode | null }>({});
+  const [showSuggestions, setShowSuggestions] = useState<{ [productId: string]: boolean }>({});
+  const suggestionRefs = useRef<{ [productId: string]: HTMLDivElement | null }>({});
 
   const handleAddProduct = () => {
     setProducts([
@@ -51,7 +56,54 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
     setProducts(products.map(p => 
       p.id === id ? { ...p, [field]: value } : p
     ));
+
+    // Поиск ТНВЭД при изменении кода
+    if (field === 'tnvedCode') {
+      const normalizedCode = normalizeTNVEDCode(value);
+      
+      if (normalizedCode.length >= 2) {
+        searchTNVED(normalizedCode, 5).then(suggestions => {
+          setTnvedSuggestions(prev => ({ ...prev, [id]: suggestions }));
+          setShowSuggestions(prev => ({ ...prev, [id]: true }));
+        });
+
+        // Если код полный (10 цифр), ищем точное совпадение
+        if (normalizedCode.length === 10) {
+          findTNVEDByCode(normalizedCode).then(info => {
+            setTnvedInfo(prev => ({ ...prev, [id]: info }));
+          });
+        } else {
+          setTnvedInfo(prev => ({ ...prev, [id]: null }));
+        }
+      } else {
+        setTnvedSuggestions(prev => ({ ...prev, [id]: [] }));
+        setShowSuggestions(prev => ({ ...prev, [id]: false }));
+        setTnvedInfo(prev => ({ ...prev, [id]: null }));
+      }
+    }
   };
+
+  const handleSelectTNVED = (productId: string, code: TNVEDCode) => {
+    const normalizedCode = normalizeTNVEDCode(code.code);
+    handleProductChange(productId, 'tnvedCode', normalizedCode);
+    setShowSuggestions(prev => ({ ...prev, [productId]: false }));
+    setTnvedInfo(prev => ({ ...prev, [productId]: code }));
+  };
+
+  // Закрытие выпадающего списка при клике вне его
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      Object.keys(suggestionRefs.current).forEach(productId => {
+        const ref = suggestionRefs.current[productId];
+        if (ref && !ref.contains(event.target as Node)) {
+          setShowSuggestions(prev => ({ ...prev, [productId]: false }));
+        }
+      });
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleCalculate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +168,7 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
                     />
                   </div>
 
-                  <div>
+                  <div className="relative">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Код ТНВЭД
                     </label>
@@ -127,11 +179,55 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ isAuthenticate
                         const value = e.target.value.replace(/\D/g, '').slice(0, 10);
                         handleProductChange(product.id, 'tnvedCode', value);
                       }}
+                      onFocus={() => {
+                        if (product.tnvedCode.length >= 2) {
+                          setShowSuggestions(prev => ({ ...prev, [product.id]: true }));
+                        }
+                      }}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="0000000000"
                       maxLength={10}
                       required
                     />
+                    
+                    {/* Выпадающий список с предложениями */}
+                    {showSuggestions[product.id] && tnvedSuggestions[product.id]?.length > 0 && (
+                      <div
+                        ref={el => suggestionRefs.current[product.id] = el}
+                        className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                      >
+                        {tnvedSuggestions[product.id].map((suggestion, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => handleSelectTNVED(product.id, suggestion)}
+                            className="w-full text-left px-4 py-2 hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="font-medium text-gray-900">{normalizeTNVEDCode(suggestion.code)}</div>
+                            <div className="text-sm text-gray-600 truncate">{suggestion.description}</div>
+                            <div className="text-xs text-gray-500">Пошлина: {suggestion.dutyRate}%</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Информация о выбранном коде */}
+                    {tnvedInfo[product.id] && product.tnvedCode.length === 10 && (
+                      <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="text-sm">
+                          <div className="font-medium text-gray-900 mb-1">
+                            {tnvedInfo[product.id]?.description}
+                          </div>
+                          <div className="text-gray-600">
+                            Пошлина: <span className="font-medium">{tnvedInfo[product.id]?.dutyRate}%</span>
+                            {' • '}
+                            Категория: {tnvedInfo[product.id]?.category}
+                            {' • '}
+                            Ед. изм.: {tnvedInfo[product.id]?.unit}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">

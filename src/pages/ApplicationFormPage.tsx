@@ -69,9 +69,9 @@ export const ApplicationFormPage: React.FC = () => {
     setProducts(newProducts);
   };
 
-  const handleTNVEDSuggest = (index: number) => {
+  const handleTNVEDSuggest = async (index: number) => {
     const product = products[index];
-    const suggestions = getTNVEDSuggestions(
+    const suggestions = await getTNVEDSuggestions(
       product.productName || '',
       product.productMaterial || '',
       product.productDescription || ''
